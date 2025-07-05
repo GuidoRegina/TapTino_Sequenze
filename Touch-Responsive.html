@@ -1,77 +1,68 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-  <meta charset="UTF-8" />
-  <title>Sequenza Step-Based</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <style>
-    html, body {
-      margin: 0; padding: 0;
-      height: 100%; width: 100%;
-      background: black;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      overflow: hidden;
-      font-family: sans-serif;
-      user-select: none;
-      touch-action: manipulation;
-    }
-
-    .controls {
-      display: flex;
-      flex-direction: row;
-      gap: 1rem;
-      align-items: center;
-      background: rgba(0,0,0,0.5);
-      padding: 10px 16px;
-      border-radius: 12px;
-      color: white;
-      position: absolute;
-      top: 10px;
-      z-index: 10;
-    }
-
-    input, button {
-      font-size: 16px;
-      padding: 6px 10px;
-    }
-
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(5, 1fr);
-      grid-template-rows: repeat(5, 1fr);
-      gap: 1vmin;
-      width: 68vmin;
-      height: 68vmin;
-      margin-bottom: 1rem;
-      touch-action: manipulation;
-    }
-
-    .led {
-      background-color: transparent;
-      border: 1px solid #444;
-      transition: background-color 0.15s ease;
-    }
-
-    .on { background-color: white; }
-    .correct { background-color: limegreen !important; }
-    .wrong { background-color: red !important; }
-
-    .grid.disabled {
-      pointer-events: none;
-      opacity: 0.5;
-    }
-
-    #message {
-      color: white;
-      font-size: 18px;
-      text-align: center;
-      max-width: 90%;
-      margin-top: 10px;
-    }
-  </style>
+<meta charset="UTF-8" />
+<title>Sequenza Touch-Responsive</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+<style>
+  html, body {
+    margin: 0; padding: 0;
+    height: 100%; width: 100%;
+    background: black;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+    touch-action: manipulation;
+    font-family: sans-serif;
+  }
+  .controls {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    background: rgba(0,0,0,0.5);
+    padding: 10px 16px;
+    border-radius: 12px;
+    color: white;
+    position: absolute;
+    top: 10px;
+    z-index: 10;
+  }
+  input, button {
+    font-size: 16px;
+    padding: 6px 10px;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    grid-template-rows: repeat(5, 1fr);
+    gap: 1vmin;
+    width: 68vmin;
+    height: 68vmin;
+    margin-bottom: 1rem;
+    touch-action: manipulation;
+  }
+  .led {
+    background-color: transparent;
+    border: 1px solid #444;
+    transition: background-color 0.15s ease;
+  }
+  .on { background-color: white; }
+  .correct { background-color: limegreen !important; }
+  .wrong { background-color: red !important; }
+  .grid.disabled {
+    pointer-events: none;
+    opacity: 0.5;
+  }
+  #message {
+    color: white;
+    font-size: 18px;
+    text-align: center;
+    max-width: 90%;
+    margin-top: 10px;
+  }
+</style>
 </head>
 <body>
   <div class="controls">
@@ -83,6 +74,154 @@
   <div class="grid disabled" id="grid"></div>
   <div id="message">Scelga la sequenza e inserisca un ID utente, poi prema "Avvia"</div>
 
-  <!-- JS e logica come nella tua versione, eventualmente te la reinvio aggiornata -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+  const grid = document.getElementById('grid');
+  const leds = [];
+  const TOTAL_LEDS = 25;
+  const LEDS_ON_COUNT = 6;
+  const TRIALS_TOTAL = 36;
+
+  let allResults = [];
+  let results = [];
+  let trialCount = 0;
+  let sessionActive = false;
+  let userId = '';
+
+  // Crea i 25 LED
+  for (let i = 0; i < TOTAL_LEDS; i++) {
+    const led = document.createElement('div');
+    led.classList.add('led');
+    grid.appendChild(led);
+    leds.push(led);
+  }
+
+  // Funzione per accendere casualmente 6 LED distinti
+  function lightUpSixLeds() {
+    leds.forEach(led => led.classList.remove('on', 'correct', 'wrong'));
+
+    const indices = [];
+    while (indices.length < LEDS_ON_COUNT) {
+      const idx = Math.floor(Math.random() * TOTAL_LEDS);
+      if (!indices.includes(idx)) {
+        indices.push(idx);
+      }
+    }
+    indices.forEach(i => leds[i].classList.add('on'));
+    return indices;
+  }
+
+  // Variabili di stato per LED accesi
+  let activeIndices = [];
+
+  // Feedback visuale 150ms per corretto o sbagliato
+  function showFeedback(idx, correct) {
+    leds[idx].classList.remove('on');
+    leds[idx].classList.add(correct ? 'correct' : 'wrong');
+    setTimeout(() => {
+      leds[idx].classList.remove('correct', 'wrong');
+    }, 150);
+  }
+
+  // Quando un LED viene toccato
+  function onLedTouch(idx) {
+    if (!sessionActive) return;
+
+    const now = performance.now();
+
+    if (activeIndices.includes(idx)) {
+      // Tocca LED acceso = corretto
+      showFeedback(idx, true);
+      // Rimuovi da activeIndices
+      activeIndices = activeIndices.filter(i => i !== idx);
+
+      // Registra risultato
+      trialCount++;
+      results.push({
+        Trial: trialCount,
+        User_ID: userId,
+        Timestamp: new Date().toISOString(),
+        LED_Index: idx + 1,
+        Correct: 1
+      });
+
+      // Se terminati i 36 trial (ossia 6 LED * 6 volte), finisci sessione
+      if (trialCount >= TRIALS_TOTAL) {
+        endSession();
+        return;
+      }
+
+      // Se non ci sono più LED accesi, accendi nuovo set di 6 LED
+      if (activeIndices.length === 0) {
+        activeIndices = lightUpSixLeds();
+      }
+    } else {
+      // Tocca LED spento = errore
+      showFeedback(idx, false);
+
+      results.push({
+        Trial: trialCount + 1,
+        User_ID: userId,
+        Timestamp: new Date().toISOString(),
+        LED_Index: idx + 1,
+        Correct: 0
+      });
+    }
+  }
+
+  // Aggiungi event listener a tutti i LED
+  leds.forEach((led, idx) => {
+    led.addEventListener('touchstart', () => {
+      if (sessionActive) {
+        onLedTouch(idx);
+      }
+    });
+  });
+
+  function startSession() {
+    userId = document.getElementById('userId').value.trim();
+    if (!userId) {
+      alert('Inserisca un ID utente valido.');
+      return;
+    }
+    results = [];
+    trialCount = 0;
+    sessionActive = true;
+    activeIndices = lightUpSixLeds();
+    grid.classList.remove('disabled');
+    document.getElementById('startBtn').disabled = true;
+    document.getElementById('download').disabled = true;
+    document.getElementById('message').textContent = 'Tocchi i LED bianchi per spegnerli.';
+  }
+
+  function endSession() {
+    sessionActive = false;
+    activeIndices = [];
+    leds.forEach(led => led.classList.remove('on', 'correct', 'wrong'));
+    grid.classList.add('disabled');
+    allResults = allResults.concat(results);
+    results = [];
+    document.getElementById('message').textContent = "Sessione terminata. Inserisca un nuovo ID e prema 'Avvia' per iniziare.";
+    document.getElementById('startBtn').disabled = false;
+    document.getElementById('download').disabled = false;
+  }
+
+  document.getElementById('startBtn').addEventListener('click', startSession);
+
+  document.getElementById('download').addEventListener('click', () => {
+    if (allResults.length === 0) {
+      alert('Nessun dato da scaricare.');
+      return;
+    }
+    const ws = XLSX.utils.json_to_sheet(allResults);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Dati");
+    XLSX.writeFile(wb, `risultati_tutti_utenti_touch-responsive.xlsx`);
+  });
+
+  // Inizializzazione UI
+  grid.classList.add('disabled');
+  document.getElementById('download').disabled = true;
+</script>
 </body>
 </html>
