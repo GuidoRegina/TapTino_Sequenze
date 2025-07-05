@@ -69,10 +69,10 @@
 </head>
 <body>
   <div class="controls">
-    <label for="modeSelect">Scegli modalità:</label>
+    <label for="modeSelect">Scelga la sequenza:</label>
     <select id="modeSelect">
-      <option value="single">Sequenza singola LED (con ISI)</option>
-      <option value="multi">6 LED simultanei (si spengono al tocco)</option>
+      <option value="single">Step-Based</option>
+      <option value="multi">Touch-Responsive</option>
     </select>
     <label>ID utente: <input type="text" id="userId" placeholder="es. user01" autocomplete="off" /></label>
     <button id="startBtn">Avvia</button>
@@ -80,7 +80,7 @@
   </div>
 
   <div class="grid disabled" id="grid"></div>
-  <div id="message">Inserisci un ID utente e scegli la modalità, poi premi Avvia.</div>
+  <div id="message" style="margin-top: 10px;">Scelga la sequenza e inserisca un ID utente, poi prema "Avvia".</div>
 
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script>
