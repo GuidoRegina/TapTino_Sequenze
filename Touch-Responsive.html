@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
 <meta charset="UTF-8" />
-<title>Sequenza Touch-Responsive</title>
+<title>Sequenza Touch-Responsive con 6 LED e feedback</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <style>
   html, body {
@@ -15,7 +15,6 @@
     -webkit-user-select: none;
     user-select: none;
     touch-action: manipulation;
-    font-family: sans-serif;
   }
   .grid {
     width: 17cm;
@@ -76,32 +75,30 @@
   }
 </style>
 </head>
-</head>
 <body>
   <div class="controls">
-    <label>ID utente: <input type="text" id="userId" placeholder="Ad es., 01" /></label>
+    <label>ID utente: <input type="text" id="userId" placeholder="Ad es., 01" autocomplete="off" /></label>
     <button id="startBtn">Avvia</button>
     <button id="download" disabled>Scarica Excel</button>
   </div>
-
   <div class="grid disabled" id="grid"></div>
-  <div id="message">Inserisca un ID utente, poi prema 'Avvia'.</div>
+  <div id="message">Scelga la sequenza e inserisca un ID utente, poi prema "Avvia"</div>
 
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script>
     const grid = document.getElementById('grid');
     const leds = [];
-    const TRIALS_TOTAL = 36;
-    const LEDS_ON_COUNT = 6;
-
     let allResults = [];
     let results = [];
-    let userId = '';
-    let trialCount = 0;
-    let sessionActive = false;
-    let activeIndices = [];
 
-    // Inizializzo 25 LED
+    const TRIALS_TOTAL = 36;
+    let userId = '';
+    let sessionActive = false;
+    let trialCount = 0;
+
+    // Stato LED: true = acceso, false = spento
+    let ledStates = Array(25).fill(false);
+
     for (let i = 0; i < 25; i++) {
       const led = document.createElement('div');
       led.classList.add('led');
@@ -109,36 +106,51 @@
       leds.push(led);
     }
 
-    // Accende 6 LED bianchi casuali senza ripetizioni
+    // Accende 6 LED casuali, senza ripetizioni
     function lightUpSixLeds() {
-      leds.forEach(led => led.classList.remove('on', 'correct', 'wrong'));
+      leds.forEach(led => {
+        led.classList.remove('on', 'correct', 'wrong');
+      });
+      ledStates.fill(false);
+
       const indices = [];
-      while (indices.length < LEDS_ON_COUNT) {
+      while (indices.length < 6) {
         const idx = Math.floor(Math.random() * leds.length);
         if (!indices.includes(idx)) indices.push(idx);
       }
-      indices.forEach(i => leds[i].classList.add('on'));
-      return indices;
+      indices.forEach(i => {
+        ledStates[i] = true;
+        leds[i].classList.add('on');
+      });
     }
 
-    // Mostra feedback 150ms verde o rosso
-    function showFeedback(idx, correct) {
-      leds[idx].classList.remove('on');
-      leds[idx].classList.add(correct ? 'correct' : 'wrong');
+    // Feedback corretto (verde) 150ms
+    function showCorrectFeedback(idx) {
+      leds[idx].classList.add('correct');
       setTimeout(() => {
-        leds[idx].classList.remove('correct', 'wrong');
+        leds[idx].classList.remove('correct');
       }, 150);
     }
 
-    // Funzione che gestisce il tocco su un LED
-    function deactivateLed(idx) {
+    // Feedback sbagliato (rosso) 150ms
+    function showWrongFeedback(idx) {
+      leds[idx].classList.add('wrong');
+      setTimeout(() => {
+        leds[idx].classList.remove('wrong');
+      }, 150);
+    }
+
+    function handleTouch(idx) {
       if (!sessionActive) return;
 
-      if (activeIndices.includes(idx)) {
-        // Tocca LED acceso: corretto
-        showFeedback(idx, true);
-        activeIndices = activeIndices.filter(i => i !== idx);
+      if (ledStates[idx]) {
+        // LED acceso, toccato correttamente
+        showCorrectFeedback(idx);
+        leds[idx].classList.remove('on');
+        ledStates[idx] = false;
         trialCount++;
+
+        // Salvataggio risultato
         results.push({
           Trial: trialCount,
           User_ID: userId,
@@ -152,16 +164,17 @@
           return;
         }
 
-        // Se spenti tutti i 6 LED, accendi altri 6
-        if (activeIndices.length === 0) {
-          activeIndices = lightUpSixLeds();
+        // Se tutti spenti, accendi altri 6 LED
+        if (!ledStates.includes(true)) {
+          lightUpSixLeds();
         }
-
       } else {
-        // Tocca LED spento: sbagliato
-        showFeedback(idx, false);
+        // LED spento, toccato sbagliato
+        showWrongFeedback(idx);
+
+        // Salvataggio risultato errore
         results.push({
-          Trial: trialCount + 1,
+          Trial: trialCount + 1, // il trial non avanza
           User_ID: userId,
           Timestamp: new Date().toISOString(),
           LED_Index: idx + 1,
@@ -171,12 +184,23 @@
     }
 
     leds.forEach((led, idx) => {
-      led.addEventListener('touchstart', () => {
-        if (sessionActive) deactivateLed(idx);
-      });
+      led.addEventListener('touchstart', () => handleTouch(idx));
     });
 
-    // Avvia sessione
+    function endSession() {
+      sessionActive = false;
+      ledStates.fill(false);
+      leds.forEach(led => {
+        led.classList.remove('on', 'correct', 'wrong');
+      });
+      grid.classList.add('disabled');
+      allResults = allResults.concat(results);
+      results = [];
+      document.getElementById('message').textContent = "Sessione completata. Inserisca un nuovo ID e prema 'Avvia' per iniziare.";
+      document.getElementById('download').disabled = false;
+      document.getElementById('startBtn').disabled = false;
+    }
+
     function startSession() {
       userId = document.getElementById('userId').value.trim();
       if (!userId) {
@@ -186,27 +210,13 @@
       results = [];
       trialCount = 0;
       sessionActive = true;
-      activeIndices = lightUpSixLeds();
-      grid.classList.remove('disabled');
-      document.getElementById('startBtn').disabled = true;
+      document.getElementById('message').textContent = "Tocchi i LED bianchi per spegnerli";
       document.getElementById('download').disabled = true;
-      document.getElementById('message').textContent = 'Tocchi i LED bianchi per spegnerli.';
+      document.getElementById('startBtn').disabled = true;
+      grid.classList.remove('disabled');
+      lightUpSixLeds();
     }
 
-    // Termina sessione
-    function endSession() {
-      sessionActive = false;
-      activeIndices = [];
-      leds.forEach(led => led.classList.remove('on', 'correct', 'wrong'));
-      grid.classList.add('disabled');
-      allResults = allResults.concat(results);
-      results = [];
-      document.getElementById('message').textContent = "Sessione terminata. Inserisca un nuovo ID utente e prema 'Avvia' per iniziare.";
-      document.getElementById('startBtn').disabled = false;
-      document.getElementById('download').disabled = false;
-    }
-
-    // Eventi pulsanti
     document.getElementById('startBtn').addEventListener('click', startSession);
 
     document.getElementById('download').addEventListener('click', () => {
@@ -217,10 +227,9 @@
       const ws = XLSX.utils.json_to_sheet(allResults);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Dati");
-      XLSX.writeFile(wb, `risultati_tutti_utenti_touch-responsive.xlsx`);
+      XLSX.writeFile(wb, `risultati_tutti_utenti_touch_responsive.xlsx`);
     });
 
-    // Setup iniziale pagina
     grid.classList.add('disabled');
     document.getElementById('download').disabled = true;
   </script>
