@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
 <meta charset="UTF-8" />
-<title>Sequenza Touch-Responsive con 6 LED e feedback</title>
+<title>Sequenza 6 LED simultanei con feedback</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <style>
   html, body {
@@ -53,25 +53,21 @@
     transform: translateX(-50%);
     display: flex;
     gap: 1rem;
-    align-items: center;
+    align-items: center; /* centra verticalmente */
     color: white;
     z-index: 10;
     background: rgba(0,0,0,0.5);
     padding: 8px 12px;
     border-radius: 8px;
+    white-space: nowrap; /* evita ritorni a capo */
   }
-  button, input {
+  .controls input[type="text"],
+  .controls button {
+    height: 36px;
+    line-height: 36px;
     font-size: 16px;
-    padding: 6px 12px;
-  }
-  #message {
-    position: fixed;
-    bottom: 15px;
-    width: 100%;
-    text-align: center;
-    font-size: 20px;
-    color: white;
-    user-select: none;
+    vertical-align: middle;
+    box-sizing: border-box;
   }
 </style>
 </head>
@@ -82,7 +78,7 @@
     <button id="download" disabled>Scarica Excel</button>
   </div>
   <div class="grid disabled" id="grid"></div>
-  <div id="message">Inserisca un ID utente, poi prema 'Avvia'.</div>
+  <div id="message"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script>
