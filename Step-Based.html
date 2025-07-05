@@ -27,6 +27,11 @@
       grid-template-rows: repeat(5, 1fr);
       gap: 0.2cm;
       border: none;
+      pointer-events: auto;
+    }
+    .grid.disabled {
+      pointer-events: none;
+      opacity: 0.5;
     }
     .led {
       background-color: transparent;
@@ -77,16 +82,19 @@
 <body>
   <div class="controls">
     <label>ID utente: <input type="text" id="userId" placeholder="es. user01" autocomplete="off" /></label>
-    <button id="download">Scarica Excel</button>
+    <button id="startBtn">Avvia</button>
+    <button id="download" disabled>Scarica Excel</button>
   </div>
-  <div class="grid" id="grid"></div>
+  <div class="grid disabled" id="grid"></div>
   <div id="message"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script>
     const grid = document.getElementById('grid');
     const leds = [];
-    const results = [];
+    let allResults = [];   // accumula dati di tutti gli utenti
+    let results = [];      // dati sessione corrente
+
     const MAX_TRIALS = 30;
     const MIN_ISI = 250;
     const MAX_ISI = 1000;
@@ -95,6 +103,7 @@
     let startTime = 0;
     let trialCount = 0;
     let userId = '';
+    let sessionActive = false;
 
     for (let i = 0; i < 25; i++) {
       const led = document.createElement('div');
@@ -113,7 +122,7 @@
 
     function activateRandomLed() {
       if (trialCount >= MAX_TRIALS) {
-        showEndMessage();
+        endSession();
         return;
       }
       const offLeds = leds.filter((_, idx) => idx !== activeIndex);
@@ -124,6 +133,7 @@
     }
 
     function deactivateLed(index, correctTouch) {
+      if (!sessionActive) return;
       const endTime = performance.now();
       const rt = Math.round(endTime - startTime);
       const correct = correctTouch ? 1 : 0;
@@ -150,37 +160,66 @@
         if (trialCount < MAX_TRIALS) {
           activateRandomLed();
         } else {
-          showEndMessage();
+          endSession();
         }
       }, isi);
     }
 
     leds.forEach((led, index) => {
       led.addEventListener('touchstart', () => {
-        if (activeIndex !== -1) {
+        if (activeIndex !== -1 && sessionActive) {
           const correctTouch = index === activeIndex;
           deactivateLed(activeIndex, correctTouch);
         }
       });
     });
 
-    function showEndMessage() {
-      document.getElementById('message').textContent = "Sessione completata.";
+    function endSession() {
+      sessionActive = false;
+      activeIndex = -1;
+      grid.classList.add('disabled');
       leds.forEach(led => led.classList.remove('on', 'correct', 'wrong'));
+      allResults = allResults.concat(results);
+      results = [];
+      document.getElementById('message').textContent = 
+        "Sessione completata. Inserisci un nuovo ID e premi 'Avvia' per iniziare.";
+      document.getElementById('download').disabled = false;
+      document.getElementById('startBtn').disabled = false;
     }
 
+    function startSession() {
+      userId = document.getElementById('userId').value.trim();
+      if (!userId) {
+        alert('Inserisci un ID utente valido.');
+        return;
+      }
+      results = [];
+      trialCount = 0;
+      sessionActive = true;
+      document.getElementById('message').textContent = '';
+      document.getElementById('download').disabled = true;
+      document.getElementById('startBtn').disabled = true;
+      grid.classList.remove('disabled');
+      leds.forEach(led => led.classList.remove('on', 'correct', 'wrong'));
+      activateRandomLed();
+    }
+
+    document.getElementById('startBtn').addEventListener('click', startSession);
+
     document.getElementById('download').addEventListener('click', () => {
-      const ws = XLSX.utils.json_to_sheet(results);
+      if (allResults.length === 0) {
+        alert('Nessun dato da scaricare.');
+        return;
+      }
+      const ws = XLSX.utils.json_to_sheet(allResults);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Dati");
-      XLSX.writeFile(wb, `risultati_${userId || "utente"}.xlsx`);
+      XLSX.writeFile(wb, `risultati_tutti_utenti.xlsx`);
     });
 
-    document.getElementById('userId').addEventListener('input', (e) => {
-      userId = e.target.value.trim();
-    });
-
-    activateRandomLed();
+    grid.classList.add('disabled');
+    document.getElementById('download').disabled = true;
+    document.getElementById('message').textContent = "Inserisci un ID utente e premi 'Avvia' per cominciare.";
   </script>
 </body>
 </html>
