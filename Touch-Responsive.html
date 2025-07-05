@@ -1,1 +1,252 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8" />
+<title>Sequenza 6 LED simultanei con feedback</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%; width: 100%;
+    background: black;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: manipulation;
+  }
+  .grid {
+    width: 17cm;
+    height: 17cm;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    grid-template-rows: repeat(5, 1fr);
+    gap: 0.2cm;
+  }
+  .grid.disabled {
+    pointer-events: none;
+    opacity: 0.5;
+  }
+  .led {
+    background-color: transparent;
+    border: 1px solid #333;
+    aspect-ratio: 1 / 1;
+    width: 100%;
+    height: 100%;
+    touch-action: manipulation;
+    transition: background-color 0.15s ease;
+  }
+  .on {
+    background-color: white;
+  }
+  .correct {
+    background-color: limegreen !important;
+  }
+  .wrong {
+    background-color: red !important;
+  }
+  .controls {
+    position: fixed;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    color: white;
+    z-index: 10;
+    background: rgba(0,0,0,0.5);
+    padding: 8px 12px;
+    border-radius: 8px;
+  }
+  button, input {
+    font-size: 16px;
+    padding: 6px 12px;
+  }
+  #message {
+    position: fixed;
+    bottom: 15px;
+    width: 100%;
+    text-align: center;
+    font-size: 20px;
+    color: white;
+    user-select: none;
+  }
+</style>
+</head>
+<body>
+  <div class="controls">
+    <label>ID utente: <input type="text" id="userId" placeholder="es. user01" autocomplete="off" /></label>
+    <button id="startBtn">Avvia</button>
+    <button id="download" disabled>Scarica Excel</button>
+  </div>
+  <div class="grid disabled" id="grid"></div>
+  <div id="message"></div>
 
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script>
+    const grid = document.getElementById('grid');
+    const leds = [];
+    let allResults = [];
+    let results = [];
+
+    const TRIALS_TOTAL = 36;
+    const LEDS_SIMULTANEOUS = 6;
+    const MIN_ISI = 250;
+    const MAX_ISI = 1000;
+
+    let userId = '';
+    let sessionActive = false;
+    let activeIndices = new Set();
+    let trialCount = 0;
+    let startTime = 0;
+
+    for (let i = 0; i < 25; i++) {
+      const led = document.createElement('div');
+      led.classList.add('led');
+      grid.appendChild(led);
+      leds.push(led);
+    }
+
+    function computeISI(rt, correct) {
+      const normalizedRT = Math.min(rt, 1000);
+      const rtWeight = (normalizedRT - 250) / 750;
+      const accuracyWeight = correct ? 0 : 1;
+      const weight = Math.min(1, 0.6 * rtWeight + 0.4 * accuracyWeight);
+      return Math.round(MIN_ISI + weight * (MAX_ISI - MIN_ISI));
+    }
+
+    function pickRandomLeds(n) {
+      const availableIndices = leds.map((_, idx) => idx);
+      const chosen = new Set();
+      while (chosen.size < n) {
+        const candidate = availableIndices[Math.floor(Math.random() * availableIndices.length)];
+        chosen.add(candidate);
+      }
+      return Array.from(chosen);
+    }
+
+    function lightUpNewSet() {
+      if (trialCount >= TRIALS_TOTAL) {
+        endSession();
+        return;
+      }
+      activeIndices.clear();
+      leds.forEach(led => {
+        led.classList.remove('on', 'correct', 'wrong');
+      });
+      const newIndices = pickRandomLeds(LEDS_SIMULTANEOUS);
+      newIndices.forEach(idx => {
+        leds[idx].classList.add('on');
+        activeIndices.add(idx);
+      });
+      trialCount++;
+      startTime = performance.now();
+      document.getElementById('message').textContent = `Tocca i ${LEDS_SIMULTANEOUS} LED bianchi`;
+    }
+
+    // Feedback corretto (verde) 150ms
+    function showCorrectFeedback(idx) {
+      leds[idx].classList.add('correct');
+      setTimeout(() => {
+        leds[idx].classList.remove('correct');
+        leds[idx].classList.remove('on');
+      }, 150);
+    }
+
+    // Feedback sbagliato (rosso) 150ms
+    function showWrongFeedback(idx) {
+      leds[idx].classList.add('wrong');
+      setTimeout(() => {
+        leds[idx].classList.remove('wrong');
+      }, 150);
+    }
+
+    function deactivateLed(idx) {
+      if (!sessionActive) return;
+      if (!activeIndices.has(idx)) {
+        showWrongFeedback(idx);
+        return;
+      }
+      const now = performance.now();
+      const rt = Math.round(now - startTime);
+      startTime = now;
+
+      showCorrectFeedback(idx);
+      activeIndices.delete(idx);
+
+      const correct = 1;
+      const isi = computeISI(rt, correct);
+      const timestamp = new Date().toISOString();
+
+      results.push({
+        Trial: trialCount,
+        User_ID: userId,
+        Timestamp: timestamp,
+        RT_ms: rt,
+        Accurate: correct,
+        ISI_ms: isi
+      });
+
+      if (activeIndices.size === 0) {
+        setTimeout(lightUpNewSet, isi);
+      }
+    }
+
+    leds.forEach((led, idx) => {
+      led.addEventListener('touchstart', () => {
+        if (sessionActive) deactivateLed(idx);
+      });
+    });
+
+    function endSession() {
+      sessionActive = false;
+      activeIndices.clear();
+      leds.forEach(led => {
+        led.classList.remove('on', 'correct', 'wrong');
+      });
+      grid.classList.add('disabled');
+      allResults = allResults.concat(results);
+      results = [];
+      document.getElementById('message').textContent = "Sessione completata. Inserisci un nuovo ID e premi 'Avvia' per iniziare.";
+      document.getElementById('download').disabled = false;
+      document.getElementById('startBtn').disabled = false;
+    }
+
+    function startSession() {
+      userId = document.getElementById('userId').value.trim();
+      if (!userId) {
+        alert('Inserisci un ID utente valido.');
+        return;
+      }
+      results = [];
+      trialCount = 0;
+      sessionActive = true;
+      document.getElementById('message').textContent = '';
+      document.getElementById('download').disabled = true;
+      document.getElementById('startBtn').disabled = true;
+      grid.classList.remove('disabled');
+      leds.forEach(led => led.classList.remove('on', 'correct', 'wrong'));
+      lightUpNewSet();
+    }
+
+    document.getElementById('startBtn').addEventListener('click', startSession);
+
+    document.getElementById('download').addEventListener('click', () => {
+      if (allResults.length === 0) {
+        alert('Nessun dato da scaricare.');
+        return;
+      }
+      const ws = XLSX.utils.json_to_sheet(allResults);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Dati");
+      XLSX.writeFile(wb, `risultati_tutti_utenti.xlsx`);
+    });
+
+    grid.classList.add('disabled');
+    document.getElementById('download').disabled = true;
+    document.getElementById('message').textContent = "Inserisci un ID utente e premi 'Avvia' per cominciare.";
+  </script>
+</body>
+</html>
