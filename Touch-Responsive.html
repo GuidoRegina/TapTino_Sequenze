@@ -88,6 +88,12 @@
   <div class="grid disabled" id="grid"></div>
   <div id="message">Inserisca un ID utente, poi prema 'Avvia'.</div>
 
+  <script>
+  document.getElementById('startBtn').addEventListener('click', () => {
+    const msg = document.getElementById('message');
+    msg.style.display = 'none';  // Nasconde il messaggio al click su "Avvia"
+  });
+</script>
 
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script>
