@@ -1,162 +1,253 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-  <meta charset="UTF-8">
-  <title>Step-Based</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body {
-      margin: 0;
-      background: black;
-      color: white;
-      font-family: Arial, sans-serif;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 20px;
-    }
-    .controls {
-      display: flex;
-      gap: 10px;
-      margin-bottom: 15px;
-    }
-    input, button {
-      font-size: 1rem;
-      padding: 6px;
-      border-radius: 4px;
-    }
-    #grid {
-      display: grid;
-      grid-template-columns: repeat(5, 1fr);
-      grid-template-rows: repeat(5, 1fr);
-      width: 17cm;
-      height: 17cm;
-      gap: 0.2cm;
-      touch-action: manipulation;
-    }
-    .led {
-      background-color: transparent;
-      border: 1px solid #444;
-      aspect-ratio: 1 / 1;
-      width: 100%;
-      transition: background-color 0.15s;
-    }
-    .on { background-color: white; }
-    .correct { background-color: limegreen !important; }
-    .wrong { background-color: red !important; }
-  </style>
+<meta charset="UTF-8" />
+<title>Sequenza LED singola con ISI variabile e feedback</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%; width: 100%;
+    background: black;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: manipulation;
+  }
+  .grid {
+    width: 17cm;
+    height: 17cm;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    grid-template-rows: repeat(5, 1fr);
+    gap: 0.2cm;
+  }
+  .grid.disabled {
+    pointer-events: none;
+    opacity: 0.5;
+  }
+  .led {
+    background-color: transparent;
+    border: 1px solid #333;
+    aspect-ratio: 1 / 1;
+    width: 100%;
+    height: 100%;
+    touch-action: manipulation;
+    transition: background-color 0.15s ease;
+  }
+  .on {
+    background-color: white;
+  }
+  .correct {
+    background-color: limegreen !important;
+  }
+  .wrong {
+    background-color: red !important;
+  }
+  .controls {
+    position: fixed;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    color: white;
+    z-index: 10;
+    background: rgba(0,0,0,0.5);
+    padding: 8px 12px;
+    border-radius: 8px;
+  }
+  button, input {
+    font-size: 16px;
+    padding: 6px 12px;
+  }
+  #message {
+    position: fixed;
+    bottom: 15px;
+    width: 100%;
+    text-align: center;
+    font-size: 20px;
+    color: white;
+    user-select: none;
+  }
+</style>
 </head>
 <body>
+  <div class="controls">
+    <label>ID utente: <input type="text" id="userId" placeholder="es. user01" autocomplete="off" /></label>
+    <button id="startBtn">Avvia</button>
+    <button id="download" disabled>Scarica Excel</button>
+  </div>
+  <div class="grid disabled" id="grid"></div>
+  <div id="message"></div>
 
-<div class="controls">
-  <label for="userId">ID utente:</label>
-  <input type="text" id="userId" placeholder="Ad es., 01">
-  <button id="startBtn">Avvia</button>
-  <button id="downloadBtn" disabled>Scarica Excel</button>
-</div>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script>
+    const grid = document.getElementById('grid');
+    const leds = [];
+    let allResults = [];
+    let results = [];
 
-<div id="grid"></div>
-<p id="status">Inserisca un ID utente, poi prema "Avvia".</p>
+    const TRIALS_TOTAL = 36;
+    const MIN_ISI = 250;
+    const MAX_ISI = 1000;
 
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script>
-  const grid = document.getElementById("grid");
-  const status = document.getElementById("status");
-  const leds = [];
-  const TRIALS_TOTAL = 36;
-  let trial = 0;
-  let userId = "";
-  let currentIndex = null;
-  let startTime = null;
-  let results = [];
+    let userId = '';
+    let sessionActive = false;
+    let currentOnIndex = null;
+    let trialCount = 0;
+    let startTime = 0;
 
-  for (let i = 0; i < 25; i++) {
-    const led = document.createElement("div");
-    led.className = "led";
-    grid.appendChild(led);
-    leds.push(led);
-  }
+    for (let i = 0; i < 25; i++) {
+      const led = document.createElement('div');
+      led.classList.add('led');
+      grid.appendChild(led);
+      leds.push(led);
+    }
 
-  function randomIndex(exclude) {
-    let idx;
-    do {
-      idx = Math.floor(Math.random() * 25);
-    } while (idx === exclude);
-    return idx;
-  }
+    function computeISI(rt, correct) {
+      const normalizedRT = Math.min(rt, 1000);
+      const rtWeight = (normalizedRT - 250) / 750;
+      const accuracyWeight = correct ? 0 : 1;
+      const weight = Math.min(1, 0.6 * rtWeight + 0.4 * accuracyWeight);
+      return Math.round(MIN_ISI + weight * (MAX_ISI - MIN_ISI));
+    }
 
-  function showLED() {
-    if (trial >= TRIALS_TOTAL) return endSession();
-    leds.forEach(l => l.className = "led");
-    currentIndex = randomIndex(currentIndex);
-    leds[currentIndex].classList.add("on");
-    startTime = performance.now();
-  }
+    function pickRandomLed() {
+      let idx;
+      do {
+        idx = Math.floor(Math.random() * leds.length);
+      } while (idx === currentOnIndex);
+      return idx;
+    }
 
-  function feedback(index, correct) {
-    leds[index].classList.remove("on");
-    leds[index].classList.add(correct ? "correct" : "wrong");
-    setTimeout(() => {
-      leds[index].classList.remove("correct", "wrong");
-    }, 150);
-  }
+    function lightUpNewLed() {
+      if (trialCount >= TRIALS_TOTAL) {
+        endSession();
+        return;
+      }
+      leds.forEach(led => {
+        led.classList.remove('on', 'correct', 'wrong');
+      });
+      currentOnIndex = pickRandomLed();
+      leds[currentOnIndex].classList.add('on');
+      startTime = performance.now();
+      document.getElementById('message').textContent = "Tocca il LED bianco";
+    }
 
-  function computeISI(rt, correct) {
-    const weight = (Math.min(rt, 1000) - 250) / 750;
-    return Math.round(250 + (correct ? weight : 1) * (1000 - 250));
-  }
+    // Feedback corretto (verde) 150ms
+    function showCorrectFeedback(idx) {
+      leds[idx].classList.add('correct');
+      setTimeout(() => {
+        leds[idx].classList.remove('correct');
+        leds[idx].classList.remove('on');
+      }, 150);
+    }
 
-  function handleTouch(index) {
-    if (trial >= TRIALS_TOTAL) return;
-    const now = performance.now();
-    const rt = Math.round(now - startTime);
-    const correct = index === currentIndex;
-    feedback(index, correct);
-    const isi = computeISI(rt, correct);
+    // Feedback sbagliato (rosso) 150ms
+    function showWrongFeedback() {
+      leds[currentOnIndex].classList.add('wrong');
+      setTimeout(() => {
+        leds[currentOnIndex].classList.remove('wrong');
+      }, 150);
+    }
 
-    results.push({
-      Trial: trial + 1,
-      User_ID: userId,
-      RT_ms: rt,
-      Accurate: correct ? 1 : 0,
-      ISI_ms: isi,
-      Timestamp: new Date().toISOString()
+    function deactivateLed(index) {
+      if (!sessionActive) return;
+
+      const now = performance.now();
+
+      if (index === currentOnIndex) {
+        const rt = Math.round(now - startTime);
+        startTime = now;
+
+        showCorrectFeedback(index);
+        currentOnIndex = null;
+
+        const correct = 1;
+        const isi = computeISI(rt, correct);
+        const timestamp = new Date().toISOString();
+
+        trialCount++;
+
+        results.push({
+          Trial: trialCount,
+          User_ID: userId,
+          Timestamp: timestamp,
+          RT_ms: rt,
+          Accurate: correct,
+          ISI_ms: isi
+        });
+
+        if (trialCount >= TRIALS_TOTAL) {
+          setTimeout(endSession, isi);
+        } else {
+          setTimeout(lightUpNewLed, isi);
+        }
+
+      } else {
+        showWrongFeedback();
+      }
+    }
+
+    leds.forEach((led, idx) => {
+      led.addEventListener('touchstart', () => {
+        if (sessionActive) {
+          deactivateLed(idx);
+        }
+      });
     });
 
-    trial++;
-    setTimeout(showLED, isi);
-  }
+    function endSession() {
+      sessionActive = false;
+      currentOnIndex = null;
+      leds.forEach(led => {
+        led.classList.remove('on', 'correct', 'wrong');
+      });
+      grid.classList.add('disabled');
+      allResults = allResults.concat(results);
+      results = [];
+      document.getElementById('message').textContent = "Sessione completata. Inserisci un nuovo ID e premi 'Avvia' per iniziare.";
+      document.getElementById('download').disabled = false;
+      document.getElementById('startBtn').disabled = false;
+    }
 
-  leds.forEach((led, index) => {
-    led.addEventListener("touchstart", () => handleTouch(index), { passive: true });
-  });
+    function startSession() {
+      userId = document.getElementById('userId').value.trim();
+      if (!userId) {
+        alert('Inserisci un ID utente valido.');
+        return;
+      }
+      results = [];
+      trialCount = 0;
+      sessionActive = true;
+      document.getElementById('message').textContent = '';
+      document.getElementById('download').disabled = true;
+      document.getElementById('startBtn').disabled = true;
+      grid.classList.remove('disabled');
+      leds.forEach(led => led.classList.remove('on', 'correct', 'wrong'));
+      lightUpNewLed();
+    }
 
-  function startSession() {
-    userId = document.getElementById("userId").value.trim();
-    if (!userId) return alert("Inserisca un ID utente valido.");
-    results = [];
-    trial = 0;
-    status.textContent = "";
-    document.getElementById("startBtn").disabled = true;
-    document.getElementById("downloadBtn").disabled = true;
-    showLED();
-  }
+    document.getElementById('startBtn').addEventListener('click', startSession);
 
-  function endSession() {
-    status.textContent = "Sessione completata.";
-    document.getElementById("startBtn").disabled = false;
-    document.getElementById("downloadBtn").disabled = false;
-  }
+    document.getElementById('download').addEventListener('click', () => {
+      if (allResults.length === 0) {
+        alert('Nessun dato da scaricare.');
+        return;
+      }
+      const ws = XLSX.utils.json_to_sheet(allResults);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Dati");
+      XLSX.writeFile(wb, `risultati_tutti_utenti.xlsx`);
+    });
 
-  document.getElementById("startBtn").onclick = startSession;
-
-  document.getElementById("downloadBtn").onclick = () => {
-    const ws = XLSX.utils.json_to_sheet(results);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Risultati");
-    XLSX.writeFile(wb, `step_based_${userId}.xlsx`);
-  };
-</script>
-
+    grid.classList.add('disabled');
+    document.getElementById('download').disabled = true;
+    document.getElementById('message').textContent = "Inserisci un ID utente e premi 'Avvia' per cominciare.";
+  </script>
 </body>
 </html>
