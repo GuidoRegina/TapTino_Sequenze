@@ -97,7 +97,9 @@
     let userId = '';
     let trialCount = 0;
     let sessionActive = false;
+    let activeIndices = [];
 
+    // Inizializzo 25 LED
     for (let i = 0; i < 25; i++) {
       const led = document.createElement('div');
       led.classList.add('led');
@@ -105,7 +107,7 @@
       leds.push(led);
     }
 
-    // Accende 6 LED bianchi casuali
+    // Accende 6 LED bianchi casuali senza ripetizioni
     function lightUpSixLeds() {
       leds.forEach(led => led.classList.remove('on', 'correct', 'wrong'));
       const indices = [];
@@ -117,8 +119,6 @@
       return indices;
     }
 
-    let activeIndices = [];
-
     // Mostra feedback 150ms verde o rosso
     function showFeedback(idx, correct) {
       leds[idx].classList.remove('on');
@@ -128,14 +128,14 @@
       }, 150);
     }
 
-    function onLedTouch(idx) {
+    // Funzione che gestisce il tocco su un LED
+    function deactivateLed(idx) {
       if (!sessionActive) return;
 
       if (activeIndices.includes(idx)) {
-        // LED acceso toccato: corretto
+        // Tocca LED acceso: corretto
         showFeedback(idx, true);
         activeIndices = activeIndices.filter(i => i !== idx);
-
         trialCount++;
         results.push({
           Trial: trialCount,
@@ -150,14 +150,14 @@
           return;
         }
 
-        // Se spenti tutti 6 LED, accendi altri 6
+        // Se spenti tutti i 6 LED, accendi altri 6
         if (activeIndices.length === 0) {
           activeIndices = lightUpSixLeds();
         }
-      } else {
-        // LED spento toccato: errore
-        showFeedback(idx, false);
 
+      } else {
+        // Tocca LED spento: sbagliato
+        showFeedback(idx, false);
         results.push({
           Trial: trialCount + 1,
           User_ID: userId,
@@ -170,10 +170,11 @@
 
     leds.forEach((led, idx) => {
       led.addEventListener('touchstart', () => {
-        if (sessionActive) onLedTouch(idx);
+        if (sessionActive) deactivateLed(idx);
       });
     });
 
+    // Avvia sessione
     function startSession() {
       userId = document.getElementById('userId').value.trim();
       if (!userId) {
@@ -190,6 +191,7 @@
       document.getElementById('message').textContent = 'Tocchi i LED bianchi per spegnerli.';
     }
 
+    // Termina sessione
     function endSession() {
       sessionActive = false;
       activeIndices = [];
@@ -202,6 +204,7 @@
       document.getElementById('download').disabled = false;
     }
 
+    // Eventi pulsanti
     document.getElementById('startBtn').addEventListener('click', startSession);
 
     document.getElementById('download').addEventListener('click', () => {
@@ -215,6 +218,7 @@
       XLSX.writeFile(wb, `risultati_tutti_utenti_touch-responsive.xlsx`);
     });
 
+    // Setup iniziale pagina
     grid.classList.add('disabled');
     document.getElementById('download').disabled = true;
   </script>
