@@ -1,17 +1,23 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-  <meta charset="UTF-8">
-  <title>Griglia LED</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <title>LED Task - Landscape</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <style>
     html, body {
-      height: 100%;
-      margin: 0;
+      margin: 0; padding: 0; height: 100%; width: 100%;
       background: black;
       display: flex;
       justify-content: center;
       align-items: center;
+      overflow: hidden;
+      -webkit-user-select: none;
+      user-select: none;
+      touch-action: manipulation;
+    }
+    body {
+      flex-direction: row;
     }
     .grid {
       width: 17cm;
@@ -20,6 +26,7 @@
       grid-template-columns: repeat(5, 1fr);
       grid-template-rows: repeat(5, 1fr);
       gap: 0.2cm;
+      border: none;
     }
     .led {
       background-color: transparent;
@@ -32,16 +39,63 @@
     .on {
       background-color: white;
     }
+    .correct {
+      background-color: limegreen !important;
+    }
+    .wrong {
+      background-color: red !important;
+    }
+    .controls {
+      position: fixed;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+      color: white;
+      z-index: 10;
+      background: rgba(0,0,0,0.5);
+      padding: 8px 12px;
+      border-radius: 8px;
+    }
+    button, input {
+      font-size: 16px;
+      padding: 6px 12px;
+    }
+    #message {
+      position: fixed;
+      bottom: 15px;
+      width: 100%;
+      text-align: center;
+      font-size: 20px;
+      color: white;
+      user-select: none;
+    }
   </style>
 </head>
 <body>
+  <div class="controls">
+    <label>ID utente: <input type="text" id="userId" placeholder="es. user01" autocomplete="off" /></label>
+    <button id="download">Scarica Excel</button>
+  </div>
   <div class="grid" id="grid"></div>
+  <div id="message"></div>
 
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script>
     const grid = document.getElementById('grid');
     const leds = [];
+    const results = [];
+    const MAX_TRIALS = 30;
+    const MIN_ISI = 250;
+    const MAX_ISI = 1000;
 
-    // Crea 25 LED
+    let activeIndex = -1;
+    let startTime = 0;
+    let trialCount = 0;
+    let userId = '';
+
     for (let i = 0; i < 25; i++) {
       const led = document.createElement('div');
       led.classList.add('led');
@@ -49,32 +103,83 @@
       leds.push(led);
     }
 
-    let activeIndex = -1;
+    function computeISI(rt, correct) {
+      const normalizedRT = Math.min(rt, 1000);
+      const rtWeight = (normalizedRT - 250) / 750;
+      const accuracyWeight = correct ? 0 : 1;
+      const weight = Math.min(1, 0.6 * rtWeight + 0.4 * accuracyWeight);
+      return Math.round(MIN_ISI + weight * (MAX_ISI - MIN_ISI));
+    }
 
     function activateRandomLed() {
-      const offLeds = leds.filter((led, idx) => idx !== activeIndex);
-      if (offLeds.length === 0) return;
+      if (trialCount >= MAX_TRIALS) {
+        showEndMessage();
+        return;
+      }
+      const offLeds = leds.filter((_, idx) => idx !== activeIndex);
       const next = offLeds[Math.floor(Math.random() * offLeds.length)];
       next.classList.add('on');
       activeIndex = leds.indexOf(next);
+      startTime = performance.now();
     }
 
-    function deactivateLed(index) {
-      leds[index].classList.remove('on');
+    function deactivateLed(index, correctTouch) {
+      const endTime = performance.now();
+      const rt = Math.round(endTime - startTime);
+      const correct = correctTouch ? 1 : 0;
+      const isi = computeISI(rt, correct);
+      const timestamp = new Date().toISOString();
+
+      const led = leds[index];
+      led.classList.remove('on');
+      led.classList.add(correctTouch ? 'correct' : 'wrong');
+
+      results.push({
+        Trial: ++trialCount,
+        User_ID: userId,
+        Timestamp: timestamp,
+        RT_ms: rt,
+        Accurate: correct,
+        ISI_ms: isi
+      });
+
       activeIndex = -1;
-      setTimeout(activateRandomLed, 500);
+
+      setTimeout(() => {
+        led.classList.remove('correct', 'wrong');
+        if (trialCount < MAX_TRIALS) {
+          activateRandomLed();
+        } else {
+          showEndMessage();
+        }
+      }, isi);
     }
 
-    // Gestione del tocco
     leds.forEach((led, index) => {
       led.addEventListener('touchstart', () => {
-        if (index === activeIndex) {
-          deactivateLed(index);
+        if (activeIndex !== -1) {
+          const correctTouch = index === activeIndex;
+          deactivateLed(activeIndex, correctTouch);
         }
       });
     });
 
-    // Avvio iniziale
+    function showEndMessage() {
+      document.getElementById('message').textContent = "Sessione completata.";
+      leds.forEach(led => led.classList.remove('on', 'correct', 'wrong'));
+    }
+
+    document.getElementById('download').addEventListener('click', () => {
+      const ws = XLSX.utils.json_to_sheet(results);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Dati");
+      XLSX.writeFile(wb, `risultati_${userId || "utente"}.xlsx`);
+    });
+
+    document.getElementById('userId').addEventListener('input', (e) => {
+      userId = e.target.value.trim();
+    });
+
     activateRandomLed();
   </script>
 </body>
