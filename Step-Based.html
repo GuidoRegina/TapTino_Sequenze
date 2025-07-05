@@ -1,37 +1,36 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="it">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8">
   <title>Griglia LED</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
-    body {
+    html, body {
+      height: 100%;
       margin: 0;
       background: black;
       display: flex;
       justify-content: center;
       align-items: center;
-      height: 100vh;
     }
-
     .grid {
       width: 17cm;
       height: 17cm;
       display: grid;
       grid-template-columns: repeat(5, 1fr);
       grid-template-rows: repeat(5, 1fr);
-      gap: 5px;
+      gap: 0.2cm;
     }
-
     .led {
-      background: white;
+      background-color: transparent;
+      border: 1px solid #333;
+      aspect-ratio: 1 / 1;
       width: 100%;
       height: 100%;
       touch-action: manipulation;
     }
-
-    .off {
-      background: black;
+    .on {
+      background-color: white;
     }
   </style>
 </head>
@@ -40,43 +39,43 @@
 
   <script>
     const grid = document.getElementById('grid');
-    const size = 5;
-    let currentOnIndex = -1;
-    let ledElements = [];
+    const leds = [];
 
-    // Crea la griglia
-    for (let i = 0; i < size * size; i++) {
+    // Crea 25 LED
+    for (let i = 0; i < 25; i++) {
       const led = document.createElement('div');
       led.classList.add('led');
-      led.dataset.index = i;
       grid.appendChild(led);
-      ledElements.push(led);
+      leds.push(led);
+    }
 
-      // Listener per tocco
-      led.addEventListener('click', () => {
-        if (i === currentOnIndex) {
-          led.classList.add('off');
-          currentOnIndex = -1;
+    let activeIndex = -1;
 
-          setTimeout(() => {
-            accendiNuovoLED();
-          }, 500);
+    function activateRandomLed() {
+      const offLeds = leds.filter((led, idx) => idx !== activeIndex);
+      if (offLeds.length === 0) return;
+      const next = offLeds[Math.floor(Math.random() * offLeds.length)];
+      next.classList.add('on');
+      activeIndex = leds.indexOf(next);
+    }
+
+    function deactivateLed(index) {
+      leds[index].classList.remove('on');
+      activeIndex = -1;
+      setTimeout(activateRandomLed, 500);
+    }
+
+    // Gestione del tocco
+    leds.forEach((led, index) => {
+      led.addEventListener('touchstart', () => {
+        if (index === activeIndex) {
+          deactivateLed(index);
         }
       });
-    }
+    });
 
-    function accendiNuovoLED() {
-      let newIndex;
-      do {
-        newIndex = Math.floor(Math.random() * 25);
-      } while (newIndex === currentOnIndex);
-
-      ledElements[newIndex].classList.remove('off');
-      currentOnIndex = newIndex;
-    }
-
-    // Accendi un LED iniziale
-    accendiNuovoLED();
+    // Avvio iniziale
+    activateRandomLed();
   </script>
 </body>
 </html>
