@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8" />
+<title>Sequenze LED con scelta modalità</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%; width: 100%;
+    background: black;
+    color: white;
+    font-family: Arial, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+  }
+  .controls {
+    margin: 15px 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: center;
+    background: rgba(0,0,0,0.6);
+    padding: 10px 15px;
+    border-radius: 8px;
+  }
+  label, button, select, input {
+    font-size: 1rem;
+  }
+  .grid {
+    width: 17cm;
+    height: 17cm;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    grid-template-rows: repeat(5, 1fr);
+    gap: 0.2cm;
+    touch-action: manipulation;
+  }
+  .grid.disabled {
+    pointer-events: none;
+    opacity: 0.4;
+  }
+  .led {
+    background-color: transparent;
+    border: 1px solid #333;
+    aspect-ratio: 1 / 1;
+    width: 100%;
+    height: 100%;
+    transition: background-color 0.15s ease;
+  }
+  .on {
+    background-color: white;
+  }
+  .correct {
+    background-color: limegreen !important;
+  }
+  .wrong {
+    background-color: red !important;
+  }
+  #message {
+    margin-top: 12px;
+    font-size: 1.2rem;
+    min-height: 1.4em;
+  }
+</style>
+</head>
+<body>
+  <div class="controls">
+    <label for="modeSelect">Scegli modalità:</label>
+    <select id="modeSelect">
+      <option value="single">Sequenza singola LED (con ISI)</option>
+      <option value="multi">6 LED simultanei (si spengono al tocco)</option>
+    </select>
+    <label>ID utente: <input type="text" id="userId" placeholder="es. user01" autocomplete="off" /></label>
+    <button id="startBtn">Avvia</button>
+    <button id="download" disabled>Scarica Excel</button>
+  </div>
+
+  <div class="grid disabled" id="grid"></div>
+  <div id="message">Inserisci un ID utente e scegli la modalità, poi premi Avvia.</div>
+
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script>
+    const grid = document.getElementById('grid');
+    const leds = [];
+    let allResults = [];
+    let results = [];
+
+    const TRIALS_TOTAL = 36;
+    const LEDS_SIMULTANEOUS = 6;
+    const MIN_ISI = 250;
+    const MAX_ISI = 1000;
+
+    let userId = '';
+    let sessionActive = false;
+    let trialCount = 0;
+    let startTime = 0;
+
+    // For mode single
+    let currentOnIndex = null;
+
+    // For mode multi
+    let activeIndices = new Set();
+
+    // Create 25 LEDs
+    for(let i=0; i<25; i++){
+      const led = document.createElement('div');
+      led.classList.add('led');
+      grid.appendChild(led);
+      leds.push(led);
+    }
+
+    function computeISI(rt, correct){
+      const normalizedRT = Math.min(rt, 1000);
+      const rtWeight = (normalizedRT - 250)/750;
+      const accuracyWeight = correct ? 0 : 1;
+      const weight = Math.min(1, 0.6*rtWeight + 0.4*accuracyWeight);
+      return Math.round(MIN_ISI + weight*(MAX_ISI - MIN_ISI));
+    }
+
+    // --- Modalità singola LED ---
+
+    function pickRandomLed(){
+      let idx;
+      do {
+        idx = Math.floor(Math.random()*leds.length);
+      } while (idx === currentOnIndex);
+      return idx;
+    }
+
+    function lightUpNewLed(){
+      if(trialCount >= TRIALS_TOTAL){
+        endSession();
+        return;
+      }
+      leds.forEach(led => led.classList.remove('on', 'correct', 'wrong'));
+      currentOnIndex = pickRandomLed();
+      leds[currentOnIndex].classList.add('on');
+      startTime = performance.now();
+      document.getElementById('message').textContent = "Tocca il LED bianco";
+    }
+
+    function showCorrectFeedback(idx){
+      leds[idx].classList.add('correct');
+      setTimeout(() => {
+        leds[idx].classList.remove('correct');
+        leds[idx].classList.remove('on');
+      }, 150);
+    }
+
+    function showWrongFeedback(){
+      leds[currentOnIndex].classList.add('wrong');
+      setTimeout(() => {
+        leds[currentOnIndex].classList.remove('wrong');
+      }, 150);
+    }
+
+    function deactivateLedSingle(idx){
+      if(!sessionActive) return;
+      const now = performance.now();
+
+      if(idx === currentOnIndex){
+        const rt = Math.round(now - startTime);
+        startTime = now;
+        showCorrectFeedback(idx);
+        currentOnIndex = null;
+        const correct = 1;
+        const isi = computeISI(rt, correct);
+        const timestamp = new Date().toISOString();
+        trialCount++;
+
+        results.push({
+          Trial: trialCount,
+          User_ID: userId,
+          Timestamp: timestamp,
+          RT_ms: rt,
+          Accurate: correct,
+          ISI_ms: isi
+        });
+
+        if(trialCount >= TRIALS_TOTAL){
+          setTimeout(endSession, isi);
+        } else {
+          setTimeout(lightUpNewLed, isi);
+        }
+      } else {
+        showWrongFeedback();
+      }
+    }
+
+    // --- Modalità 6 LED simultanei ---
+
+    function pickRandomLeds(n){
+      const availableIndices = leds.map((_,i) => i);
+      const chosen = new Set();
+      while(chosen.size < n){
+        const candidate = availableIndices[Math.floor(Math.random()*availableIndices.length)];
+        chosen.add(candidate);
+      }
+      return Array.from(chosen);
+    }
+
+    function lightUpNewSet(){
+      if(trialCount >= TRIALS_TOTAL){
+        endSession();
+        return;
+      }
+      activeIndices.clear();
+      leds.forEach(led => led.classList.remove('on', 'correct', 'wrong'));
+      const newIndices = pickRandomLeds(LEDS_SIMULTANEOUS);
+      newIndices.forEach(idx => {
+        leds[idx].classList.add('on');
+        activeIndices.add(idx);
+      });
+      trialCount++;
+      startTime = performance.now();
+      document.getElementById('message').textContent = `Tocca i ${LEDS_SIMULTANEOUS} LED bianchi`;
+    }
+
+    function showCorrectFeedbackMulti(idx){
+      leds[idx].classList.add('correct');
+      setTimeout(() => {
+        leds[idx].classList.remove('correct');
+        leds[idx].classList.remove('on');
+      }, 150);
+    }
+
+    function showWrongFeedbackMulti(idx){
+      leds[idx].classList.add('wrong');
+      setTimeout(() => {
+        leds[idx].classList.remove('wrong');
+      }, 150);
+    }
+
+    function deactivateLedMulti(idx){
+      if(!sessionActive) return;
+      if(!activeIndices.has(idx)){
+        showWrongFeedbackMulti(idx);
+        return;
+      }
+      const now = performance.now();
+      const rt = Math.round(now - startTime);
+      startTime = now;
+
+      showCorrectFeedbackMulti(idx);
+      activeIndices.delete(idx);
+
+      const correct = 1;
+      const isi = computeISI(rt, correct);
+      const timestamp = new Date().toISOString();
+
+      results.push({
+        Trial: trialCount,
+        User_ID: userId,
+        Timestamp: timestamp,
+        RT_ms: rt,
+        Accurate: correct,
+        ISI_ms: isi
+      });
+
+      if(activeIndices.size === 0){
+        setTimeout(lightUpNewSet, isi);
+      }
+    }
+
+    // --- Event listeners ---
+
+    leds.forEach((led, idx) => {
+      led.addEventListener('touchstart', () => {
+        if(!sessionActive) return;
+        const mode = document.getElementById('modeSelect').value;
+        if(mode === 'single'){
+          deactivateLedSingle(idx);
+        } else {
+          deactivateLedMulti(idx);
+        }
+      });
+    });
+
+    function endSession(){
+      sessionActive = false;
+      currentOnIndex = null;
+      activeIndices.clear();
+      leds.forEach(led => led.classList.remove('on', 'correct', 'wrong'));
+      grid.classList.add('disabled');
+      allResults = allResults.concat(results);
+      results = [];
+      document.getElementById('message').textContent = "Sessione completata. Inserisci un nuovo ID e premi 'Avvia' per iniziare.";
+      document.getElementById('download').disabled = false;
+      document.getElementById('startBtn').disabled = false;
+    }
+
+    function startSession(){
+      userId = document.getElementById('userId').value.trim();
+      if(!userId){
+        alert("Inserisci un ID utente valido.");
+        return;
+      }
+      results = [];
+      trialCount = 0;
+      sessionActive = true;
+      document.getElementById('message').textContent = "";
+      document.getElementById('download').disabled = true;
+      document.getElementById('startBtn').disabled = true;
+      grid.classList.remove('disabled');
+      leds.forEach(led => led.classList.remove('on', 'correct', 'wrong'));
+
+      const mode = document.getElementById('modeSelect').value;
+      if(mode === 'single'){
+        lightUpNewLed();
+      } else {
+        lightUpNewSet();
+      }
+    }
+
+    document.getElementById('startBtn').addEventListener('click', startSession);
+
+    document.getElementById('download').addEventListener('click', () => {
+      if(allResults.length === 0){
+        alert("Nessun dato da scaricare.");
+        return;
+      }
+      const ws = XLSX.utils.json_to_sheet(allResults);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Dati");
+      XLSX.writeFile(wb, `risultati_tutti_utenti.xlsx`);
+    });
+
+    grid.classList.add('disabled');
+    document.getElementById('download').disabled = true;
+  </script>
+</body>
+</html>
