@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <title>Step-Based</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      width: 100%;
+      background: black;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden;
+      user-select: none;
+      touch-action: manipulation;
+      font-family: sans-serif;
+    }
+    .controls {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+      color: white;
+      margin-bottom: 1rem;
+    }
+    .controls input {
+      padding: 6px 8px;
+      font-size: 16px;
+      width: 100px;
+    }
+    .controls label {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+    .controls button {
+      font-size: 16px;
+      padding: 6px 12px;
+    }
+    .grid {
+      width: 85vmin;
+      height: 85vmin;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      grid-template-rows: repeat(5, 1fr);
+      gap: 0.5vmin;
+      touch-action: manipulation;
+    }
+    .grid.disabled {
+      pointer-events: none;
+      opacity: 0.5;
+    }
+    .led {
+      background-color: transparent;
+      border: 1px solid #333;
+      width: 100%;
+      height: 100%;
+      transition: background-color 0.15s ease;
+    }
+    .on {
+      background-color: white;
+    }
+    .correct {
+      background-color: limegreen !important;
+    }
+    .wrong {
+      background-color: red !important;
+    }
+    #message {
+      color: white;
+      font-size: 18px;
+      margin-top: 12px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="controls">
+    <label>ID utente: <input type="text" id="userId" placeholder="Ad es., 01" /></label>
+    <button id="startBtn">Avvia</button>
+    <button id="download" disabled>Scarica Excel</button>
+  </div>
+
+  <div class="grid disabled" id="grid"></div>
+  <div id="message">Inserisca un ID utente, poi prema 'Avvia'.</div>
+
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script>
+    const grid = document.getElementById('grid');
+    const leds = [];
+    let allResults = [];
+    let results = [];
+
+    const TRIALS_TOTAL = 36;
+    const MIN_ISI = 250;
+    const MAX_ISI = 1000;
+
+    let userId = '';
+    let sessionActive = false;
+    let currentOnIndex = null;
+    let trialCount = 0;
+    let startTime = 0;
+
+    for (let i = 0; i < 25; i++) {
+      const led = document.createElement('div');
+      led.classList.add('led');
+      grid.appendChild(led);
+      leds.push(led);
+    }
+
+    function computeISI(rt, correct) {
+      const normalizedRT = Math.min(rt, 1000);
+      const rtWeight = (normalizedRT - 250) / 750;
+      const accuracyWeight = correct ? 0 : 1;
+      const weight = Math.min(1, 0.6 * rtWeight + 0.4 * accuracyWeight);
+      return Math.round(MIN_ISI + weight * (MAX_ISI - MIN_ISI));
+    }
+
+    function pickRandomLed() {
+      let idx;
+      do {
+        idx = Math.floor(Math.random() * leds.length);
+      } while (idx === currentOnIndex);
+      return idx;
+    }
+
+    function lightUpNewLed() {
+      if (trialCount >= TRIALS_TOTAL) {
+        endSession();
+        return;
+      }
+      leds.forEach(led => led.classList.remove('on', 'correct', 'wrong'));
+      currentOnIndex = pickRandomLed();
+      leds[currentOnIndex].classList.add('on');
+      startTime = performance.now();
+    }
+
+    function showCorrectFeedback(idx) {
+      leds[idx].classList.add('correct');
+      setTimeout(() => {
+        leds[idx].classList.remove('correct', 'on');
+      }, 150);
+    }
+
+    function showWrongFeedback() {
+      leds[currentOnIndex].classList.add('wrong');
+      setTimeout(() => {
+        leds[currentOnIndex].classList.remove('wrong');
+      }, 150);
+    }
+
+    function deactivateLed(index) {
+      if (!sessionActive) return;
+
+      const now = performance.now();
+      const rt = Math.round(now - startTime);
+      const timestamp = new Date().toISOString();
+      const correct = index === currentOnIndex ? 1 : 0;
+
+      if (correct) {
+        showCorrectFeedback(index);
+        currentOnIndex = null;
+        const isi = computeISI(rt, correct);
+        trialCount++;
+
+        results.push({
+          Trial: trialCount,
+          User_ID: userId,
+          Timestamp: timestamp,
+          RT_ms: rt,
+          Accurate: correct,
+          ISI_ms: isi,
+          LED_index: index,
+          Touch_index: index
+        });
+
+        if (trialCount >= TRIALS_TOTAL) {
+          setTimeout(endSession, isi);
+        } else {
+          setTimeout(lightUpNewLed, isi);
+        }
+
+      } else {
+        showWrongFeedback();
+        results.push({
+          Trial: trialCount + 1,
+          User_ID: userId,
+          Timestamp: timestamp,
+          RT_ms: rt,
+          Accurate: 0,
+          ISI_ms: 0,
+          LED_index: currentOnIndex,
+          Touch_index: index
+        });
+      }
+    }
+
+    leds.forEach((led, idx) => {
+      led.addEventListener('touchstart', () => {
+        if (sessionActive) {
+          deactivateLed(idx);
+        }
+      });
+    });
+
+    function endSession() {
+      sessionActive = false;
+      currentOnIndex = null;
+      leds.forEach(led => led.classList.remove('on', 'correct', 'wrong'));
+      grid.classList.add('disabled');
+      allResults = allResults.concat(results);
+      results = [];
+      document.getElementById('message').textContent = "Sessione completata. Inserisca un nuovo ID utente e prema 'Avvia'.";
+      document.getElementById('download').disabled = false;
+      document.getElementById('startBtn').disabled = false;
+    }
+
+    function startSession() {
+      userId = document.getElementById('userId').value.trim();
+      if (!userId) {
+        alert('Inserisca un ID utente valido.');
+        return;
+      }
+      results = [];
+      trialCount = 0;
+      sessionActive = true;
+      document.getElementById('message').textContent = '';
+      document.getElementById('download').disabled = true;
+      document.getElementById('startBtn').disabled = true;
+      grid.classList.remove('disabled');
+      leds.forEach(led => led.classList.remove('on', 'correct', 'wrong'));
+      lightUpNewLed();
+    }
+
+    document.getElementById('startBtn').addEventListener('click', startSession);
+
+    document.getElementById('download').addEventListener('click', () => {
+      if (allResults.length === 0) {
+        alert('Nessun dato da scaricare.');
+        return;
+      }
+      const ws = XLSX.utils.json_to_sheet(allResults);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Dati");
+      XLSX.writeFile(wb, `risultati_tutti_utenti.xlsx`);
+    });
+
+    grid.classList.add('disabled');
+    document.getElementById('download').disabled = true;
+  </script>
+</body>
+</html>
