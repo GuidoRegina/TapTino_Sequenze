@@ -1,83 +1,79 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-  <meta charset="UTF-8" />
-  <title>LED Task - Landscape</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <style>
-    html, body {
-      margin: 0; padding: 0; height: 100%; width: 100%;
-      background: black;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      overflow: hidden;
-      -webkit-user-select: none;
-      user-select: none;
-      touch-action: manipulation;
-    }
-    body {
-      flex-direction: row;
-    }
-    .grid {
-      width: 17cm;
-      height: 17cm;
-      display: grid;
-      grid-template-columns: repeat(5, 1fr);
-      grid-template-rows: repeat(5, 1fr);
-      gap: 0.2cm;
-      border: none;
-      pointer-events: auto;
-    }
-    .grid.disabled {
-      pointer-events: none;
-      opacity: 0.5;
-    }
-    .led {
-      background-color: transparent;
-      border: 1px solid #333;
-      aspect-ratio: 1 / 1;
-      width: 100%;
-      height: 100%;
-      touch-action: manipulation;
-    }
-    .on {
-      background-color: white;
-    }
-    .correct {
-      background-color: limegreen !important;
-    }
-    .wrong {
-      background-color: red !important;
-    }
-    .controls {
-      position: fixed;
-      top: 10px;
-      left: 50%;
-      transform: translateX(-50%);
-      display: flex;
-      gap: 1rem;
-      align-items: center;
-      color: white;
-      z-index: 10;
-      background: rgba(0,0,0,0.5);
-      padding: 8px 12px;
-      border-radius: 8px;
-    }
-    button, input {
-      font-size: 16px;
-      padding: 6px 12px;
-    }
-    #message {
-      position: fixed;
-      bottom: 15px;
-      width: 100%;
-      text-align: center;
-      font-size: 20px;
-      color: white;
-      user-select: none;
-    }
-  </style>
+<meta charset="UTF-8" />
+<title>Sequenza LED singola con ISI variabile e feedback</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%; width: 100%;
+    background: black;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: manipulation;
+  }
+  .grid {
+    width: 17cm;
+    height: 17cm;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    grid-template-rows: repeat(5, 1fr);
+    gap: 0.2cm;
+  }
+  .grid.disabled {
+    pointer-events: none;
+    opacity: 0.5;
+  }
+  .led {
+    background-color: transparent;
+    border: 1px solid #333;
+    aspect-ratio: 1 / 1;
+    width: 100%;
+    height: 100%;
+    touch-action: manipulation;
+    transition: background-color 0.15s ease;
+  }
+  .on {
+    background-color: white;
+  }
+  .correct {
+    background-color: limegreen !important;
+  }
+  .wrong {
+    background-color: red !important;
+  }
+  .controls {
+    position: fixed;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    color: white;
+    z-index: 10;
+    background: rgba(0,0,0,0.5);
+    padding: 8px 12px;
+    border-radius: 8px;
+  }
+  button, input {
+    font-size: 16px;
+    padding: 6px 12px;
+  }
+  #message {
+    position: fixed;
+    bottom: 15px;
+    width: 100%;
+    text-align: center;
+    font-size: 20px;
+    color: white;
+    user-select: none;
+  }
+</style>
 </head>
 <body>
   <div class="controls">
@@ -92,18 +88,18 @@
   <script>
     const grid = document.getElementById('grid');
     const leds = [];
-    let allResults = [];   // accumula dati di tutti gli utenti
-    let results = [];      // dati sessione corrente
+    let allResults = [];
+    let results = [];
 
-    const MAX_TRIALS = 36;  // MODIFICATO: 36 trial
+    const TRIALS_TOTAL = 36;
     const MIN_ISI = 250;
     const MAX_ISI = 1000;
 
-    let activeIndex = -1;
-    let startTime = 0;
-    let trialCount = 0;
     let userId = '';
     let sessionActive = false;
+    let currentOnIndex = null;
+    let trialCount = 0;
+    let startTime = 0;
 
     for (let i = 0; i < 25; i++) {
       const led = document.createElement('div');
@@ -120,69 +116,101 @@
       return Math.round(MIN_ISI + weight * (MAX_ISI - MIN_ISI));
     }
 
-    function activateRandomLed() {
-      if (trialCount >= MAX_TRIALS) {
+    function pickRandomLed() {
+      let idx;
+      do {
+        idx = Math.floor(Math.random() * leds.length);
+      } while (idx === currentOnIndex);
+      return idx;
+    }
+
+    function lightUpNewLed() {
+      if (trialCount >= TRIALS_TOTAL) {
         endSession();
         return;
       }
-      const offLeds = leds.filter((_, idx) => idx !== activeIndex);
-      const next = offLeds[Math.floor(Math.random() * offLeds.length)];
-      next.classList.add('on');
-      activeIndex = leds.indexOf(next);
-      startTime = performance.now();
-    }
-
-    function deactivateLed(index, correctTouch) {
-      if (!sessionActive) return;
-      const endTime = performance.now();
-      const rt = Math.round(endTime - startTime);
-      const correct = correctTouch ? 1 : 0;
-      const isi = computeISI(rt, correct);
-      const timestamp = new Date().toISOString();
-
-      const led = leds[index];
-      led.classList.remove('on');
-      led.classList.add(correctTouch ? 'correct' : 'wrong');
-
-      results.push({
-        Trial: ++trialCount,
-        User_ID: userId,
-        Timestamp: timestamp,
-        RT_ms: rt,
-        Accurate: correct,
-        ISI_ms: isi
+      leds.forEach(led => {
+        led.classList.remove('on', 'correct', 'wrong');
       });
-
-      activeIndex = -1;
-
-      setTimeout(() => {
-        led.classList.remove('correct', 'wrong');
-        if (trialCount < MAX_TRIALS) {
-          activateRandomLed();
-        } else {
-          endSession();
-        }
-      }, isi);
+      currentOnIndex = pickRandomLed();
+      leds[currentOnIndex].classList.add('on');
+      startTime = performance.now();
+      document.getElementById('message').textContent = "Tocca il LED bianco";
     }
 
-    leds.forEach((led, index) => {
+    // Feedback corretto (verde) 150ms
+    function showCorrectFeedback(idx) {
+      leds[idx].classList.add('correct');
+      setTimeout(() => {
+        leds[idx].classList.remove('correct');
+        leds[idx].classList.remove('on');
+      }, 150);
+    }
+
+    // Feedback sbagliato (rosso) 150ms
+    function showWrongFeedback() {
+      leds[currentOnIndex].classList.add('wrong');
+      setTimeout(() => {
+        leds[currentOnIndex].classList.remove('wrong');
+      }, 150);
+    }
+
+    function deactivateLed(index) {
+      if (!sessionActive) return;
+
+      const now = performance.now();
+
+      if (index === currentOnIndex) {
+        const rt = Math.round(now - startTime);
+        startTime = now;
+
+        showCorrectFeedback(index);
+        currentOnIndex = null;
+
+        const correct = 1;
+        const isi = computeISI(rt, correct);
+        const timestamp = new Date().toISOString();
+
+        trialCount++;
+
+        results.push({
+          Trial: trialCount,
+          User_ID: userId,
+          Timestamp: timestamp,
+          RT_ms: rt,
+          Accurate: correct,
+          ISI_ms: isi
+        });
+
+        if (trialCount >= TRIALS_TOTAL) {
+          setTimeout(endSession, isi);
+        } else {
+          setTimeout(lightUpNewLed, isi);
+        }
+
+      } else {
+        showWrongFeedback();
+      }
+    }
+
+    leds.forEach((led, idx) => {
       led.addEventListener('touchstart', () => {
-        if (activeIndex !== -1 && sessionActive) {
-          const correctTouch = index === activeIndex;
-          deactivateLed(activeIndex, correctTouch);
+        if (sessionActive) {
+          deactivateLed(idx);
         }
       });
     });
 
     function endSession() {
       sessionActive = false;
-      activeIndex = -1;
+      currentOnIndex = null;
+      leds.forEach(led => {
+        led.classList.remove('on', 'correct', 'wrong');
+      });
       grid.classList.add('disabled');
-      leds.forEach(led => led.classList.remove('on', 'correct', 'wrong'));
       allResults = allResults.concat(results);
       results = [];
-      document.getElementById('message').textContent = 
-        "Sessione completata. Inserisci un nuovo ID e premi 'Avvia' per iniziare.";
+      document.getElementById('message').textContent = "Sessione completata. Inserisci un nuovo ID e premi 'Avvia' per iniziare.";
       document.getElementById('download').disabled = false;
       document.getElementById('startBtn').disabled = false;
     }
@@ -201,7 +229,7 @@
       document.getElementById('startBtn').disabled = true;
       grid.classList.remove('disabled');
       leds.forEach(led => led.classList.remove('on', 'correct', 'wrong'));
-      activateRandomLed();
+      lightUpNewLed();
     }
 
     document.getElementById('startBtn').addEventListener('click', startSession);
