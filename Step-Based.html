@@ -1,88 +1,92 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-<meta charset="UTF-8" />
-<title>Sequenza LED singola con ISI variabile e feedback</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
-<style>
-  html, body {
-    margin: 0; padding: 0; height: 100%; width: 100%;
-    background: black;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    overflow: hidden;
-    -webkit-user-select: none;
-    user-select: none;
-    touch-action: manipulation;
-  }
-  .grid {
-    width: 17cm;
-    height: 17cm;
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    grid-template-rows: repeat(5, 1fr);
-    gap: 0.2cm;
-  }
-  .grid.disabled {
-    pointer-events: none;
-    opacity: 0.5;
-  }
-  .led {
-    background-color: transparent;
-    border: 1px solid #333;
-    aspect-ratio: 1 / 1;
-    width: 100%;
-    height: 100%;
-    touch-action: manipulation;
-    transition: background-color 0.15s ease;
-  }
-  .on {
-    background-color: white;
-  }
-  .correct {
-    background-color: limegreen !important;
-  }
-  .wrong {
-    background-color: red !important;
-  }
-  .controls {
-    position: fixed;
-    top: 10px;
-    left: 50%;
-    transform: translateX(-50%);
-    display: flex;
-    gap: 1rem;
-    align-items: center;
-    color: white;
-    z-index: 10;
-    background: rgba(0,0,0,0.5);
-    padding: 8px 12px;
-    border-radius: 8px;
-  }
-  button, input {
-    font-size: 16px;
-    padding: 6px 12px;
-  }
-  #message {
-    position: fixed;
-    bottom: 15px;
-    width: 100%;
-    text-align: center;
-    font-size: 20px;
-    color: white;
-    user-select: none;
-  }
-</style>
+  <meta charset="UTF-8" />
+  <title>Step-Based</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      width: 100%;
+      background: black;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden;
+      user-select: none;
+      touch-action: manipulation;
+      font-family: sans-serif;
+    }
+    .controls {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+      color: white;
+      margin-bottom: 1rem;
+    }
+    .controls input {
+      padding: 6px 8px;
+      font-size: 16px;
+      width: 100px;
+    }
+    .controls label {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+    .controls button {
+      font-size: 16px;
+      padding: 6px 12px;
+    }
+    .grid {
+      width: 85vmin;
+      height: 85vmin;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      grid-template-rows: repeat(5, 1fr);
+      gap: 0.5vmin;
+      touch-action: manipulation;
+    }
+    .grid.disabled {
+      pointer-events: none;
+      opacity: 0.5;
+    }
+    .led {
+      background-color: transparent;
+      border: 1px solid #333;
+      width: 100%;
+      height: 100%;
+      transition: background-color 0.15s ease;
+    }
+    .on {
+      background-color: white;
+    }
+    .correct {
+      background-color: limegreen !important;
+    }
+    .wrong {
+      background-color: red !important;
+    }
+    #message {
+      color: white;
+      font-size: 18px;
+      margin-top: 12px;
+      text-align: center;
+    }
+  </style>
 </head>
 <body>
   <div class="controls">
-    <label>ID utente: <input type="text" id="userId" placeholder="Ad es., 01" autocomplete="off" /></label>
+    <label>ID utente: <input type="text" id="userId" placeholder="Ad es., 01" /></label>
     <button id="startBtn">Avvia</button>
     <button id="download" disabled>Scarica Excel</button>
   </div>
+
   <div class="grid disabled" id="grid"></div>
-  <div id="message"></div>
+  <div id="message">Scelga la sequenza e inserisca un ID utente, poi prema "Avvia"</div>
 
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script>
@@ -129,16 +133,13 @@
         endSession();
         return;
       }
-      leds.forEach(led => {
-        led.classList.remove('on', 'correct', 'wrong');
-      });
+      leds.forEach(led => led.classList.remove('on', 'correct', 'wrong'));
       currentOnIndex = pickRandomLed();
       leds[currentOnIndex].classList.add('on');
       startTime = performance.now();
       document.getElementById('message').textContent = "Tocca il LED bianco";
     }
 
-    // Feedback corretto (verde) 150ms
     function showCorrectFeedback(idx) {
       leds[idx].classList.add('correct');
       setTimeout(() => {
@@ -147,7 +148,6 @@
       }, 150);
     }
 
-    // Feedback sbagliato (rosso) 150ms
     function showWrongFeedback() {
       leds[currentOnIndex].classList.add('wrong');
       setTimeout(() => {
@@ -204,13 +204,11 @@
     function endSession() {
       sessionActive = false;
       currentOnIndex = null;
-      leds.forEach(led => {
-        led.classList.remove('on', 'correct', 'wrong');
-      });
+      leds.forEach(led => led.classList.remove('on', 'correct', 'wrong'));
       grid.classList.add('disabled');
       allResults = allResults.concat(results);
       results = [];
-      document.getElementById('message').textContent = "Sessione completata. Inserisci un nuovo ID e premi 'Avvia' per iniziare.";
+      document.getElementById('message').textContent = "Sessione completata. Inserisca un nuovo ID utente e prema 'Avvia'";
       document.getElementById('download').disabled = false;
       document.getElementById('startBtn').disabled = false;
     }
@@ -218,7 +216,7 @@
     function startSession() {
       userId = document.getElementById('userId').value.trim();
       if (!userId) {
-        alert('Inserisci un ID utente valido.');
+        alert('Inserisca un ID utente valido.');
         return;
       }
       results = [];
@@ -247,7 +245,6 @@
 
     grid.classList.add('disabled');
     document.getElementById('download').disabled = true;
-    document.getElementById('message').textContent = "Inserisci un ID utente e premi "Avvia" per cominciare.";
   </script>
 </body>
 </html>
