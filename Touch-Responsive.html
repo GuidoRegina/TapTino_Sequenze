@@ -82,7 +82,7 @@
     <button id="download" disabled>Scarica Excel</button>
   </div>
   <div class="grid disabled" id="grid"></div>
-  <div id="message">Scelga la sequenza e inserisca un ID utente, poi prema "Avvia"</div>
+  <div id="message">Inserisca un ID utente, poi prema 'Avvia'.</div>
 
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script>
@@ -196,7 +196,7 @@
       grid.classList.add('disabled');
       allResults = allResults.concat(results);
       results = [];
-      document.getElementById('message').textContent = "Sessione completata. Inserisca un nuovo ID e prema 'Avvia' per iniziare.";
+      document.getElementById('message').textContent = "Sessione completata. Inserisca un nuovo ID utente e prema 'Avvia' per iniziare.";
       document.getElementById('download').disabled = false;
       document.getElementById('startBtn').disabled = false;
     }
@@ -210,7 +210,6 @@
       results = [];
       trialCount = 0;
       sessionActive = true;
-      document.getElementById('message').textContent = "Tocchi i LED bianchi per spegnerli";
       document.getElementById('download').disabled = true;
       document.getElementById('startBtn').disabled = true;
       grid.classList.remove('disabled');
