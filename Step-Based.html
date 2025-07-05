@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Griglia LED</title>
+  <style>
+    body {
+      margin: 0;
+      background: black;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+
+    .grid {
+      width: 17cm;
+      height: 17cm;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      grid-template-rows: repeat(5, 1fr);
+      gap: 5px;
+    }
+
+    .led {
+      background: white;
+      width: 100%;
+      height: 100%;
+      touch-action: manipulation;
+    }
+
+    .off {
+      background: black;
+    }
+  </style>
+</head>
+<body>
+  <div class="grid" id="grid"></div>
+
+  <script>
+    const grid = document.getElementById('grid');
+    const size = 5;
+    let currentOnIndex = -1;
+    let ledElements = [];
+
+    // Crea la griglia
+    for (let i = 0; i < size * size; i++) {
+      const led = document.createElement('div');
+      led.classList.add('led');
+      led.dataset.index = i;
+      grid.appendChild(led);
+      ledElements.push(led);
+
+      // Listener per tocco
+      led.addEventListener('click', () => {
+        if (i === currentOnIndex) {
+          led.classList.add('off');
+          currentOnIndex = -1;
+
+          setTimeout(() => {
+            accendiNuovoLED();
+          }, 500);
+        }
+      });
+    }
+
+    function accendiNuovoLED() {
+      let newIndex;
+      do {
+        newIndex = Math.floor(Math.random() * 25);
+      } while (newIndex === currentOnIndex);
+
+      ledElements[newIndex].classList.remove('off');
+      currentOnIndex = newIndex;
+    }
+
+    // Accendi un LED iniziale
+    accendiNuovoLED();
+  </script>
+</body>
+</html>
