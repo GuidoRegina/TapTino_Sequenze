@@ -198,16 +198,14 @@
       led.addEventListener('touchstart', () => handleTouch(idx));
     });
 
-    function endSession() {
+ function endSession() {
       sessionActive = false;
-      ledStates.fill(false);
-      leds.forEach(led => {
-        led.classList.remove('on', 'correct', 'wrong');
-      });
+      currentOnIndex = null;
+      leds.forEach(led => led.classList.remove('on', 'correct', 'wrong'));
       grid.classList.add('disabled');
       allResults = allResults.concat(results);
       results = [];
-      document.getElementById('message').textContent = "Sessione completata. Inserisca un nuovo ID utente e prema 'Avvia' per iniziare.";
+      document.getElementById('message').textContent = "Sessione completata. Inserisca un nuovo ID utente e prema 'Avvia'.";
       document.getElementById('download').disabled = false;
       document.getElementById('startBtn').disabled = false;
     }
