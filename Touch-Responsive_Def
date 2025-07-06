@@ -91,7 +91,7 @@
   <script>
     document.getElementById('startBtn').addEventListener('click', () => {
       const msg = document.getElementById('message');
-      msg.style.display = 'none';  // Nasconde il messaggio al click su "Avvia"
+      msg.style.display = 'none';
     });
   </script>
 
@@ -107,10 +107,9 @@
     let sessionActive = false;
     let trialCount = 0;
 
-    // Stato LED: true = acceso, false = spento
     let ledStates = Array(25).fill(false);
 
-    // Variabili per RT
+    // RT tracking per sequenza da 6 trial
     let ledAppearanceTime = 0;
     let currentRTs = [];
 
@@ -121,7 +120,6 @@
       leds.push(led);
     }
 
-    // Accende 6 LED casuali, senza ripetizioni
     function lightUpSixLeds() {
       leds.forEach(led => {
         led.classList.remove('on', 'correct', 'wrong');
@@ -138,10 +136,9 @@
         leds[i].classList.add('on');
       });
 
-      ledAppearanceTime = performance.now(); // tempo inizio nuova sequenza
+      ledAppearanceTime = performance.now();
     }
 
-    // Feedback corretto (verde) 150ms
     function showCorrectFeedback(idx) {
       leds[idx].classList.add('correct');
       setTimeout(() => {
@@ -149,7 +146,6 @@
       }, 150);
     }
 
-    // Feedback sbagliato (rosso) 150ms
     function showWrongFeedback(idx) {
       leds[idx].classList.add('wrong');
       setTimeout(() => {
@@ -171,13 +167,11 @@
         trialCount++;
         currentRTs.push(rt);
 
-        // Salvataggio risultato singolo trial accurato
         results.push({
           Trial: trialCount,
           User_ID: userId,
           Timestamp: new Date().toISOString(),
           LED_Index: idx + 1,
-          Accurate: 1,
           RT_ms: Math.round(rt)
         });
 
@@ -186,16 +180,14 @@
           return;
         }
 
-        // Se tutti spenti, accendi altri 6 LED e salva RT sequenza
+        // Se tutti spenti, accendi altri 6 LED e registra RT sequenza
         if (!ledStates.includes(true)) {
-          // Somma RT sequenza di 6 trial
           const rtSum = currentRTs.reduce((acc, val) => acc + val, 0);
           results.push({
             Trial: `Seq_${trialCount - 5}-${trialCount}`,
             User_ID: userId,
             Timestamp: new Date().toISOString(),
             LED_Index: '-',
-            Accurate: '-',
             RT_Sum_ms: Math.round(rtSum)
           });
           currentRTs = [];
@@ -206,15 +198,21 @@
         // LED spento, toccato sbagliato
         showWrongFeedback(idx);
 
-        // Salvataggio risultato errore
+        trialCount++;
+        currentRTs.push(rt);
+
         results.push({
-          Trial: trialCount + 1, // non avanza
+          Trial: trialCount,
           User_ID: userId,
           Timestamp: new Date().toISOString(),
           LED_Index: idx + 1,
-          Accurate: 0,
           RT_ms: Math.round(rt)
         });
+
+        if (trialCount >= TRIALS_TOTAL) {
+          endSession();
+          return;
+        }
       }
     }
 
