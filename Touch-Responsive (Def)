@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <title>Touch-Responsive</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      width: 100%;
+      background: black;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden;
+      user-select: none;
+      touch-action: manipulation;
+      font-family: sans-serif;
+    }
+    .controls {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+      color: white;
+      margin-bottom: 1rem;
+    }
+    .controls input {
+      padding: 6px 8px;
+      font-size: 16px;
+      width: 100px;
+    }
+    .controls label {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+    .controls button {
+      font-size: 16px;
+      padding: 6px 12px;
+    }
+    .grid {
+      width: 85vmin;
+      height: 85vmin;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      grid-template-rows: repeat(5, 1fr);
+      gap: 0.5vmin;
+      touch-action: manipulation;
+    }
+    .grid.disabled {
+      pointer-events: none;
+      opacity: 0.5;
+    }
+    .led {
+      background-color: transparent;
+      border: 1px solid #333;
+      width: 100%;
+      height: 100%;
+      transition: background-color 0.15s ease;
+    }
+    .on {
+      background-color: white;
+    }
+    .correct {
+      background-color: limegreen !important;
+    }
+    .wrong {
+      background-color: red !important;
+    }
+    #message {
+      color: white;
+      font-size: 18px;
+      margin-top: 12px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="controls">
+    <label>ID utente: <input type="text" id="userId" placeholder="Ad es., 01" /></label>
+    <button id="startBtn">Avvia</button>
+    <button id="download" disabled>Scarica Excel</button>
+  </div>
+
+  <div class="grid disabled" id="grid"></div>
+  <div id="message">Inserisca un ID utente, poi prema 'Avvia'.</div>
+
+  <script>
+    document.getElementById('startBtn').addEventListener('click', () => {
+      const msg = document.getElementById('message');
+      msg.style.display = 'none';  // Nasconde il messaggio al click su "Avvia"
+    });
+  </script>
+
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script>
+    const grid = document.getElementById('grid');
+    const leds = [];
+    let allResults = [];
+    let results = [];
+
+    const TRIALS_TOTAL = 36;
+    let userId = '';
+    let sessionActive = false;
+    let trialCount = 0;
+
+    // Stato LED: true = acceso, false = spento
+    let ledStates = Array(25).fill(false);
+
+    // Array per raccogliere i RT della sequenza corrente (6 trial)
+    let currentRTs = [];
+
+    // Tempo in cui è stato acceso il LED per il trial corrente
+    let trialStartTime = 0;
+
+    for (let i = 0; i < 25; i++) {
+      const led = document.createElement('div');
+      led.classList.add('led');
+      grid.appendChild(led);
+      leds.push(led);
+    }
+
+    // Accende 6 LED casuali, senza ripetizioni e salva il timestamp di inizio trial
+    function lightUpSixLeds() {
+      leds.forEach(led => {
+        led.classList.remove('on', 'correct', 'wrong');
+      });
+      ledStates.fill(false);
+
+      const indices = [];
+      while (indices.length < 6) {
+        const idx = Math.floor(Math.random() * leds.length);
+        if (!indices.includes(idx)) indices.push(idx);
+      }
+      indices.forEach(i => {
+        ledStates[i] = true;
+        leds[i].classList.add('on');
+      });
+
+      trialStartTime = performance.now();
+    }
+
+    // Feedback corretto (verde) 150ms
+    function showCorrectFeedback(idx) {
+      leds[idx].classList.add('correct');
+      setTimeout(() => {
+        leds[idx].classList.remove('correct');
+      }, 150);
+    }
+
+    // Feedback sbagliato (rosso) 150ms
+    function showWrongFeedback(idx) {
+      leds[idx].classList.add('wrong');
+      setTimeout(() => {
+        leds[idx].classList.remove('wrong');
+      }, 150);
+    }
+
+    function handleTouch(idx) {
+      if (!sessionActive) return;
+
+      const now = performance.now();
+      const rt = now - trialStartTime;
+
+      if (ledStates[idx]) {
+        // LED acceso, toccato correttamente
+        showCorrectFeedback(idx);
+        leds[idx].classList.remove('on');
+        ledStates[idx] = false;
+        trialCount++;
+
+        currentRTs.push(rt);
+
+        // Salvataggio risultato singolo trial
+        results.push({
+          Trial: trialCount,
+          Type: "trial",
+          User_ID: userId,
+          Timestamp: new Date().toISOString(),
+          LED_Index: idx + 1,
+          RT_ms: Math.round(rt)
+        });
+
+        if (trialCount >= TRIALS_TOTAL) {
+          endSession();
+          return;
+        }
+
+        // Se tutti spenti, accendi altri 6 LED e salva la somma RT
+        if (!ledStates.includes(true)) {
+          // Somma RT
+          const rtSum = currentRTs.reduce((acc, val) => acc + val, 0);
+          results.push({
+            Trial: Math.ceil(trialCount / 6),
+            Type: "RT_sum",
+            User_ID: userId,
+            Timestamp: new Date().toISOString(),
+            LED_Index: '-',
+            RT_ms: Math.round(rtSum)
+          });
+          currentRTs = [];
+
+          lightUpSixLeds();
+        } else {
+          // Nuovo LED acceso, aggiorna trialStartTime per il prossimo trial
+          trialStartTime = performance.now();
+        }
+
+      } else {
+        // LED spento, toccato sbagliato
+        showWrongFeedback(idx);
+
+        // Salvataggio risultato errore con RT
+        results.push({
+          Trial: trialCount + 1,
+          Type: "trial",
+          User_ID: userId,
+          Timestamp: new Date().toISOString(),
+          LED_Index: idx + 1,
+          RT_ms: Math.round(rt)
+        });
+      }
+    }
+
+    leds.forEach((led, idx) => {
+      led.addEventListener('touchstart', () => handleTouch(idx));
+    });
+
+    function endSession() {
+      sessionActive = false;
+      leds.forEach(led => led.classList.remove('on', 'correct', 'wrong'));
+      grid.classList.add('disabled');
+      allResults = allResults.concat(results);
+      results = [];
+      document.getElementById('download').disabled = false;
+      document.getElementById('startBtn').disabled = false;
+
+      const msg = document.getElementById('message');
+      msg.textContent = "Sessione completata. Inserisca un nuovo ID utente e prema 'Avvia'.";
+      msg.style.display = 'block';
+    }
+
+    function startSession() {
+      userId = document.getElementById('userId').value.trim();
+      if (!userId) {
+        alert('Inserisca un ID utente valido.');
+        return;
+      }
+      results = [];
+      trialCount = 0;
+      currentRTs = [];
+      sessionActive = true;
+      document.getElementById('download').disabled = true;
+      document.getElementById('startBtn').disabled = true;
+      grid.classList.remove('disabled');
+      lightUpSixLeds();
+    }
+
+    document.getElementById('startBtn').addEventListener('click', startSession);
+
+    document.getElementById('download').addEventListener('click', () => {
+      if (allResults.length === 0) {
+        alert('Nessun dato da scaricare.');
+        return;
+      }
+      const ws = XLSX.utils.json_to_sheet(allResults);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Dati");
+      XLSX.writeFile(wb, `risultati_tutti_utenti_touch_responsive.xlsx`);
+    });
+
+    grid.classList.add('disabled');
+    document.getElementById('download').disabled = true;
+  </script>
+</body>
+</html>
